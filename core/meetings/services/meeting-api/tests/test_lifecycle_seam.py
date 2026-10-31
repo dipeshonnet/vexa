@@ -1589,10 +1589,13 @@ def test_pre_active_untracked_workload_still_escalates_on_the_bounded_window():
 def test_active_grace_boundary_is_exactly_the_configured_window():
     """The 325s prod signature decomposes to `active_grace(300) + time-to-lobby + sweep phase`.
     Pin the constant: 299s quiet is NOT listed, 301s IS."""
-    for age, expect in ((299, 0), (301, 1)):
-        repo = InMemoryMeetingRepo()
+    from datetime import datetime, timedelta, timezone
+
+    sweep_at = datetime(2026, 10, 31, tzinfo=timezone.utc)
+    for age, expect in ((299, 0), (300, 1), (301, 1)):
+        repo = InMemoryMeetingRepo(clock=lambda: sweep_at)
         m = _seed(repo, status="active")
-        _set_updated_age(repo, m["id"], age)
+        repo._meetings[m["id"]]["updated_at"] = (sweep_at - timedelta(seconds=age)).isoformat()
         client = TestClient(create_app(meeting_repo=repo))
         assert _run_general_sweep(client, repo) == expect, f"age={age}s"
 

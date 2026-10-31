@@ -38,7 +38,8 @@ _TERMINAL_STATUSES = ("completed", "failed")
 class InMemoryMeetingRepo:
     """A dict-backed ``MeetingRepo`` keyed by the synthetic meeting id."""
 
-    def __init__(self):
+    def __init__(self, *, clock=None):
+        self._clock = clock
         self._meetings: dict[int, dict] = {}
         self._next_id = 1
         self.sessions: list[dict] = []  # exposed for assertions (all sessions, all meetings)
@@ -491,7 +492,7 @@ class InMemoryMeetingRepo:
         non_terminal = {
             "requested", "joining", "awaiting_admission", "needs_help", "active", "stopping",
         }
-        now = datetime.now(timezone.utc)
+        now = self._clock() if self._clock is not None else datetime.now(timezone.utc)
         out: dict = {}
         # latest session per meeting (mirror the SQL adapter's MeetingSession.id desc)
         for s in reversed(self.sessions):

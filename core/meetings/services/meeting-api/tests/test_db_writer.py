@@ -40,7 +40,9 @@ from meeting_api.collector.fakes import FakeRedisBus, InMemoryTranscriptStore
 
 USER = 7
 NATIVE = "abc-defg-hij"
-LATER = datetime.now(timezone.utc) + timedelta(seconds=120)  # every ingested segment is immutable by then
+def _after_immutability_hold() -> datetime:
+    """Evaluate the writer clock after ingestion, beyond the mutable-tail hold."""
+    return datetime.now(timezone.utc) + timedelta(seconds=120)
 
 
 @pytest.fixture
@@ -94,7 +96,7 @@ async def test_consumer_tick_then_db_writer_tick_lands_segments_durably(store, b
     assert await redis_c.hlen(segments_hash_key(1)) == 2
     assert _durable_texts(store) == []
 
-    stored = await db_writer_tick(redis_c, store, now=LATER)
+    stored = await db_writer_tick(redis_c, store, now=_after_immutability_hold())
     assert stored == 2
     assert _durable_texts(store) == ["Hello", "world"]
     # trim policy: flushed fields leave the hash; the drained meeting leaves active_meetings.
@@ -105,12 +107,12 @@ async def test_consumer_tick_then_db_writer_tick_lands_segments_durably(store, b
 async def test_db_writer_tick_is_idempotent_and_upserts_rewrites(store, bus, redis_c):
     await bus.xadd("transcription_segments", json.loads(_message(1, [_seg("s1", 1.0, "draft")])["payload"]))
     await consume_segments(store, bus)
-    await db_writer_tick(redis_c, store, now=LATER)
+    await db_writer_tick(redis_c, store, now=_after_immutability_hold())
     # A refining rewrite of the SAME segment_id re-enters the hash…
     await bus.xadd("transcription_segments", json.loads(_message(1, [_seg("s1", 1.0, "polished")])["payload"]))
     await consume_segments(store, bus)
-    await db_writer_tick(redis_c, store, now=LATER)
-    await db_writer_tick(redis_c, store, now=LATER)  # an extra tick changes nothing
+    await db_writer_tick(redis_c, store, now=_after_immutability_hold())
+    await db_writer_tick(redis_c, store, now=_after_immutability_hold())  # an extra tick changes nothing
     # …and lands as an UPDATE on the segment identity — one row, latest text, never a duplicate.
     assert _durable_texts(store) == ["polished"]
 
@@ -124,11 +126,11 @@ async def test_db_writer_discovers_hash_missing_from_active_set_only_on_reconcil
     await redis_c.hset(segments_hash_key(1), "s9", json.dumps(seg))  # NO sadd → not in active_meetings
 
     # hot path — the set-only sweep never scans the keyspace, so the orphan is NOT discovered.
-    assert await db_writer_tick(redis_c, store, now=LATER) == 0
+    assert await db_writer_tick(redis_c, store, now=_after_immutability_hold()) == 0
     assert _durable_texts(store) == []
 
     # reconcile tick — the self-healing scan runs and drains it (the intent, preserved off the hot path).
-    assert await db_writer_tick(redis_c, store, now=LATER, reconcile=True) == 1
+    assert await db_writer_tick(redis_c, store, now=_after_immutability_hold(), reconcile=True) == 1
     assert _durable_texts(store) == ["orphaned"]
 
 
@@ -162,12 +164,12 @@ async def test_hot_tick_does_not_scan_keyspace_reconcile_does(store, bus, redis_
 
     # Many hot ticks: the set is swept every time, the keyspace SCAN never runs.
     for _ in range(20):
-        await db_writer_tick(spy, store, now=LATER)
+        await db_writer_tick(spy, store, now=_after_immutability_hold())
     assert spy.scan_calls == 0
     assert _durable_texts(store) == ["hello"]  # set-only discovery still flushes durably
 
     # A reconcile tick is the ONLY place the O(keyspace) scan is paid.
-    await db_writer_tick(spy, store, now=LATER, reconcile=True)
+    await db_writer_tick(spy, store, now=_after_immutability_hold(), reconcile=True)
     assert spy.scan_calls == 1
 
 
@@ -183,7 +185,7 @@ async def test_flipped_incident_redis_wiped_after_flush_get_transcript_survives(
         _seg("s1", 1.0, "Hello"), _seg("s2", 2.5, "world"),
     ])["payload"]))
     await consume_segments(store, bus)
-    await db_writer_tick(redis_c, store, now=LATER)
+    await db_writer_tick(redis_c, store, now=_after_immutability_hold())
 
     await redis_c.flushall()  # redis is GONE — the pre-fix stack lost the transcript here
 
@@ -257,7 +259,7 @@ async def test_gmeet_lane_confirmed_segment_still_waits_out_the_hold(store, bus,
 
     assert await db_writer_tick(redis_c, store) == 0
     assert await redis_c.hlen(segments_hash_key(1)) == 1
-    assert await flush_meeting_segments(redis_c, store, 1, now=LATER) == 1  # settles normally
+    assert await flush_meeting_segments(redis_c, store, 1, now=_after_immutability_hold()) == 1  # settles normally
 
 
 async def test_legacy_mixed_lane_confirmed_segment_keeps_the_hold(store, bus, redis_c):
@@ -285,7 +287,7 @@ async def test_finalize_still_flushes_everything_including_other_lanes(store, bu
 async def test_empty_text_segments_are_dropped_not_stored(store, redis_c):
     seg = {**_seg("s1", 1.0, "   "), "updated_at": "2026-06-20T09:00:00Z"}
     await redis_c.hset(segments_hash_key(1), "s1", json.dumps(seg))
-    assert await flush_meeting_segments(redis_c, store, 1, now=LATER) == 0
+    assert await flush_meeting_segments(redis_c, store, 1, now=_after_immutability_hold()) == 0
     assert _durable_texts(store) == []
     assert await redis_c.hlen(segments_hash_key(1)) == 0  # trimmed from the hash all the same
 
@@ -301,11 +303,11 @@ async def test_redis_is_trimmed_only_after_a_confirmed_durable_write(store, bus,
             raise RuntimeError("postgres is down")
 
     with pytest.raises(RuntimeError):
-        await flush_meeting_segments(redis_c, _FailingSink(), 1, now=LATER)
+        await flush_meeting_segments(redis_c, _FailingSink(), 1, now=_after_immutability_hold())
     assert await redis_c.hlen(segments_hash_key(1)) == 1  # NOT trimmed — nothing was confirmed
 
     # The next (healthy) tick drains it.
-    assert await db_writer_tick(redis_c, store, now=LATER) == 1
+    assert await db_writer_tick(redis_c, store, now=_after_immutability_hold()) == 1
     assert _durable_texts(store) == ["keep me"]
 
 
@@ -438,7 +440,7 @@ async def test_db_writer_tick_also_drains_processed_notes(store, bus, redis_c):
     await consume_segments(store, bus)  # puts meeting 1 in active_meetings
     await redis_c.xadd(proc_stream_key(1), {"note": json.dumps(_note("s1", "Cleaned mid-meeting."))})
 
-    await db_writer_tick(redis_c, store, now=LATER)
+    await db_writer_tick(redis_c, store, now=_after_immutability_hold())
     assert [n["text"] for n in _view(store, 1)["doc"]["notes"]] == ["Cleaned mid-meeting."]
 
 
@@ -466,7 +468,7 @@ async def test_late_final_beat_notes_land_after_finalize_via_view_end(store, red
     await redis_c.xadd(proc_stream_key(1), {"note": json.dumps(_note("s1", "Final polished note."))})
     marker_id = await redis_c.xadd(proc_stream_key(1), {"type": "view_end", "cursor": "9-0"})
 
-    await db_writer_tick(redis_c, store, now=LATER)
+    await db_writer_tick(redis_c, store, now=_after_immutability_hold())
     view = _view(store, 1)
     assert [n["text"] for n in view["doc"]["notes"]] == ["Final polished note."]  # upgraded in place
     assert view["source_cursor"] == (marker_id.decode() if isinstance(marker_id, bytes) else marker_id)
@@ -514,7 +516,7 @@ async def test_rest_mid_meeting_serves_merged_postgres_plus_redis_tail(store, bu
     # An older utterance, already flushed durable by a previous tick…
     await bus.xadd("transcription_segments", json.loads(_message(1, [_seg("s1", 1.0, "flushed part")])["payload"]))
     await consume_segments(store, bus)
-    await db_writer_tick(redis_c, store, now=LATER)
+    await db_writer_tick(redis_c, store, now=_after_immutability_hold())
     # …and the live tail, seconds old, still ONLY in the redis hash.
     await bus.xadd("transcription_segments", json.loads(_message(1, [_seg("s2", 2.5, "live tail")])["payload"]))
     await consume_segments(store, bus)

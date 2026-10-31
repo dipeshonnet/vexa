@@ -2,3 +2,4 @@
 - Keep source, byte-pinned release packets, and fixtures in LF form across Windows and Linux checkouts.
 - Ignore generated cache and build directories during architecture completeness checks, including after Python tests run.
 - Drive Teams name-recovery fixture heartbeats explicitly so scheduler delays cannot change its event counts.
+- Anchor transcript-writer test clocks after ingestion and freeze lifecycle boundary-test time, preserving the mutable-tail and 300-second grace checks under load.
