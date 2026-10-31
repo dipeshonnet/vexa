@@ -158,6 +158,7 @@ export class TeamsCsrcGmeetPipeline {
   private readonly ownership = new Map<number, CsrcOwnershipInterval[]>();
   private readonly pendingDrafts = new Map<string, PendingDraft>();
   private readonly promotedDraftIds = new Set<string>();
+  private readonly unattributedSegmentIds = new Set<string>();
   private readonly sourceLastAudioMs = new Map<string, number>();
   /** Latest public row by stable id, retained only so a late proven name can repaint it. */
   private readonly published = new Map<string, TeamsCsrcTranscriptSegment>();
@@ -465,19 +466,26 @@ export class TeamsCsrcGmeetPipeline {
         { csrc, speaker: this.trackNamer.labelFor(String(csrc)), sourceKey, segmentId, text, startMs, endMs: boundedEndMs, completed, language },
         (this.ownership.get(csrc) ?? []).map((interval) => ({ ...interval })),
       );
-      // Clear an ordinary draft under the same public key if the confirmed replacement is refused.
-      // A timeout-promoted durable row must survive a refused extension.
+      // Routed speech and speaker ownership are separate observations. Preserve recognized words
+      // over available audio while abstaining from a name the transport timing cannot establish.
+      if (boundedEndMs > startMs) {
+        this.unattributedSegmentIds.add(segmentId);
+        this.emit({ csrc, speaker: 'Speaker', sourceKey, segmentId, text, startMs, endMs: boundedEndMs, completed, language });
+        return true;
+      }
       if (!this.promotedDraftIds.has(segmentId)) {
-        this.emit({ csrc, speaker: this.trackNamer.labelFor(String(csrc)), sourceKey, segmentId, text: '', startMs, endMs: startMs, completed: false, language });
+        this.emit({ csrc, speaker: 'Speaker', sourceKey, segmentId, text: '', startMs, endMs: startMs, completed: false, language });
       }
       return false;
     }
+    if (completed) this.unattributedSegmentIds.delete(segmentId);
     this.emit({ csrc, speaker: this.trackNamer.labelFor(String(csrc)), sourceKey, segmentId, text, startMs, endMs: boundedEndMs, completed, language });
     return true;
   }
 
   private emit(segment: TeamsCsrcTranscriptSegment): void {
     if (!segment.completed && !segment.text.trim()) {
+      this.unattributedSegmentIds.delete(segment.segmentId);
       this.rawPublished.delete(segment.segmentId);
       this.removeContestsFor(segment.segmentId);
       const previous = this.published.get(segment.segmentId);
@@ -509,7 +517,8 @@ export class TeamsCsrcGmeetPipeline {
     if (!Number.isFinite(csrc)) return;
     const speaker = this.trackNamer.labelFor(trackId);
     for (const segment of this.rawPublished.values()) {
-      if (segment.csrc !== csrc || segment.speaker === speaker) continue;
+      if (segment.csrc !== csrc || segment.speaker === speaker
+          || this.unattributedSegmentIds.has(segment.segmentId)) continue;
       this.rawPublished.set(segment.segmentId, { ...segment, speaker });
     }
     this.reconcilePublished();

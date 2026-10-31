@@ -393,3 +393,77 @@ def test_due_rows_hold_a_row_carrying_a_spent_attempt_until_the_backoff_expires(
     # a garbage stamp never silently pins a row out of the sweep forever
     assert due_rows([row(auto_join_last_attempt="not-a-time")], now=NOW)
     assert due_rows([row()], now=NOW)
+
+
+async def test_settings_backend_auto_joins_without_stt_environment(monkeypatch):
+    import json
+    from meeting_api.bot_spawn import service
+    monkeypatch.delenv("TRANSCRIPTION_SERVICE_URL", raising=False)
+    monkeypatch.delenv("TRANSCRIPTION_SERVICE_TOKEN", raising=False)
+    repo, runtime = InMemoryMeetingRepo(), FakeRuntimeClient()
+    mid = _seed(repo)
+
+    async def context(_uid):
+        return {"max_concurrent": 4, "transcription": {
+            "url": "https://settings-stt.example/transcribe", "token": "settings-test-token",
+            "provider": "customer", "model": "settings-model",
+        }}
+
+    monkeypatch.setattr(service, "_fetch_bot_context", context)
+    result = await auto_join_tick(repo, runtime, now=NOW, fetch_bot_context=context,
+                                  token_secret="s", redis_url="redis://r")
+    assert result["spawned"] == 1 and result["errors"] == 0
+    assert repo._meetings[mid]["status"] == "requested"
+    config = json.loads(runtime.specs[0]["env"]["VEXA_BOT_CONFIG"])
+    assert config["transcriptionServiceUrl"] == "https://settings-stt.example/transcribe"
+    assert config["transcriptionServiceToken"] == "settings-test-token"
+    assert config["transcriptionModel"] == "settings-model"
+
+
+async def test_missing_settings_and_env_is_stamped_by_shared_spawn_validation(monkeypatch):
+    from meeting_api.bot_spawn import service
+    monkeypatch.delenv("TRANSCRIPTION_SERVICE_URL", raising=False)
+    monkeypatch.delenv("TRANSCRIPTION_SERVICE_TOKEN", raising=False)
+    repo, runtime = InMemoryMeetingRepo(), FakeRuntimeClient()
+    mid = _seed(repo)
+    published = []
+
+    async def context(_uid):
+        return {"max_concurrent": 4}
+
+    async def publish(**event):
+        published.append(event)
+
+    monkeypatch.setattr(service, "_fetch_bot_context", context)
+    result = await auto_join_tick(repo, runtime, now=NOW, fetch_bot_context=context,
+                                  publish_status=publish, token_secret="s", redis_url="redis://r")
+    assert result["errors"] == 1 and result["spawned"] == 0
+    assert not runtime.specs
+    row = repo._meetings[mid]
+    assert row["status"] == "scheduled"
+    assert "no transcription backend configured" in row["data"]["auto_join_error"]
+    assert row["data"]["auto_join_next_retry"] == (NOW + timedelta(seconds=300)).isoformat()
+    assert published[0]["meeting_id"] == mid
+
+
+async def test_unconfigured_user_does_not_block_another_users_scheduled_join(monkeypatch):
+    from meeting_api.bot_spawn import service
+    monkeypatch.delenv("TRANSCRIPTION_SERVICE_URL", raising=False)
+    monkeypatch.delenv("TRANSCRIPTION_SERVICE_TOKEN", raising=False)
+    repo, runtime = InMemoryMeetingRepo(), FakeRuntimeClient()
+    _seed(repo, mid=1, user_id=USER)
+    _seed(repo, mid=2, user_id=USER + 1, native="xyz-uvwx-rst")
+
+    async def context(uid):
+        return {"max_concurrent": 4, **({"transcription": {
+            "url": "https://settings-stt.example/transcribe", "token": "settings-test-token",
+            "provider": "customer",
+        }} if uid == USER + 1 else {})}
+
+    monkeypatch.setattr(service, "_fetch_bot_context", context)
+    result = await auto_join_tick(repo, runtime, now=NOW, fetch_bot_context=context,
+                                  token_secret="s", redis_url="redis://r")
+    assert result["errors"] == 1 and result["spawned"] == 1
+    assert repo._meetings[1]["status"] == "scheduled"
+    assert repo._meetings[2]["status"] == "requested"
+    assert len(runtime.specs) == 1

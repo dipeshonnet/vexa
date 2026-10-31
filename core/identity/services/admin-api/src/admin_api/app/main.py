@@ -258,7 +258,7 @@ class CalendarPatch(BaseModel):
 # (dispatch/bot_spawn only override what is set here).
 MODEL_MODES = ("subscription", "custom")
 _MODELS_FIELDS = ("mode", "model", "meeting_model", "base_url", "api_key", "effort")
-_TRANSCRIPTION_FIELDS = ("url", "token")
+_TRANSCRIPTION_FIELDS = ("url", "token", "model")
 # "setup" tracks the admin first-run wizard: per-step state ("done" / "skipped") + overall
 # completion — the terminal re-surfaces the wizard until it reads completed. Plain strings,
 # no secrets, admin-gated like the other keys.
@@ -318,6 +318,7 @@ class ModelPrefsUpdate(BaseModel):
 class TranscriptionPrefsUpdate(BaseModel):
     url: Optional[str] = None
     token: Optional[str] = None
+    model: Optional[str] = None
 
 
 def _mask_secret(secret: Optional[str]) -> Optional[str]:
@@ -697,7 +698,7 @@ def create_app() -> FastAPI:
             name=calendar.name,
             ics_url=calendar.ics_url,
             auto_join=calendar.auto_join,
-            bot_name=calendar.bot_name or data.get("calendar_bot_name") or "Vexa",
+            bot_name=calendar.bot_name or data.get("calendar_bot_name") or "Notetaker",
         )
         connections.append(created)
         await _save_calendar_connections(user, db, connections)
@@ -776,7 +777,7 @@ def create_app() -> FastAPI:
                     current = new_connection(name="Calendar", ics_url=url,
                                              auto_join=calendar_update.auto_join
                                              if calendar_update.auto_join is not None else True,
-                                             bot_name=data.get("calendar_bot_name") or "Vexa")
+                                             bot_name=data.get("calendar_bot_name") or "Notetaker")
                     connections.append(current)
                 else:
                     current["ics_url"] = validate_ics_url(url)
@@ -801,7 +802,7 @@ def create_app() -> FastAPI:
             "ics_url_set": bool(masked and masked["ics_url_set"]),
             "ics_url_masked": masked["ics_url_masked"] if masked else None,
             "auto_join": masked["auto_join"] if masked else True,
-            "bot_name": data.get("calendar_bot_name") or "Vexa",
+            "bot_name": data.get("calendar_bot_name") or "Notetaker",
         }
 
     # --- user tier: model + transcription self-serve prefs (users.data JSONB, like webhook) ---
@@ -866,6 +867,7 @@ def create_app() -> FastAPI:
         prefs = data.get("transcription_prefs") or {}
         return {
             "url": prefs.get("url"),
+            "model": prefs.get("model"),
             "token_set": bool(prefs.get("token")),
             "token": _mask_secret(prefs.get("token")),
         }
@@ -1237,7 +1239,7 @@ def create_app() -> FastAPI:
         data = user.data if isinstance(user.data, dict) else {}
         resp: dict = {
             "max_concurrent": user.max_concurrent_bots,
-            "bot_name": data.get("calendar_bot_name") or "Vexa",
+            "bot_name": data.get("calendar_bot_name") or "Notetaker",
         }
         # Fixture collection (O-TEL-1): whether this spawn tapes its raw captured-signal stream.
         # ALWAYS present in the response — a missing key downstream is indistinguishable from an

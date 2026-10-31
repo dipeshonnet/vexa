@@ -171,3 +171,24 @@ def test_a_deployment_with_no_identity_edge_still_spawns(monkeypatch):
                                    "meeting_url": URL})
     assert r.status_code == 201, r.text
     assert "DeploymentBot" in _spawned_name(runtime)
+
+
+@pytest.mark.parametrize("default_name", [None, ""])
+@pytest.mark.parametrize("platform,native_id,url", [
+    ("google_meet", "abc-defg-hij", "https://meet.google.com/abc-defg-hij"),
+    ("teams", "123456789", "https://teams.live.com/meet/123456789"),
+    ("zoom", "12345678901", "https://zoom.us/j/12345678901"),
+    ("jitsi", "notetaker-test", "https://meet.jit.si/notetaker-test"),
+])
+def test_notetaker_is_the_default_participant_name(monkeypatch, default_name, platform, native_id, url):
+    if default_name is None:
+        monkeypatch.delenv("DEFAULT_BOT_NAME", raising=False)
+    else:
+        monkeypatch.setenv("DEFAULT_BOT_NAME", default_name)
+    client, runtime = _client(monkeypatch, context={})
+    response = client.post("/bots", headers=HEADERS, json={
+        "platform": platform, "native_meeting_id": native_id, "meeting_url": url,
+    })
+    assert response.status_code == 201, response.text
+    invocation = json.loads(runtime.specs[-1]["env"]["BOT_CONFIG"])
+    assert invocation["botName"] == "Notetaker"

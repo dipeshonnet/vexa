@@ -231,6 +231,7 @@ def _http_probe(spec: dict, env: Mapping[str, str], timeout: float) -> dict:
     if (spec.get("payload") or "") == "audio":
         content_type, body = audio_probe_body(spec.get("payload_model") or "whisper-1")
     req = urllib.request.Request(url, data=body, method=(spec.get("method") or "POST"))
+    req.add_header("User-Agent", "Vexa/1.0")
     if content_type:
         req.add_header("Content-Type", content_type)
     token = (env.get(spec["auth_key"]) or "").strip() if spec.get("auth_key") else ""

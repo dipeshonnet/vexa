@@ -10,7 +10,7 @@ The two silent-failure modes this surface exists to catch (both bit the owner on
 Tests are HONEST about depth: a custom endpoint gets a real 1-token completion; the
 subscription file gets an existence + expiry check (the CLI lives only in worker images, so a
 live inference test would need a dispatch — the expiry check catches 100% of the observed
-failures); the transcription backend gets a real authenticated ``/balance`` probe.
+failures); the transcription backend gets a real authenticated audio transcription probe.
 
 Pure functions over injected fetchers — the routes in api.py are thin wrappers.
 """
@@ -157,14 +157,15 @@ def run_models_test(config: dict, env: Optional[dict] = None,
 # (deploy/contracts/config.v1/preflight.py:probe_url), the bot's client, and the dictation route.
 _STT_PATH = "/v1/audio/transcriptions"
 
-def _transcribe_probe(endpoint: str, token: str) -> tuple:
+def _transcribe_probe(endpoint: str, token: str, model: str = "whisper-1") -> tuple:
     """POST the shared audio probe body — the same request the boot preflight makes."""
     from control_plane.config_preflight import audio_probe_body
 
-    content_type, body = audio_probe_body()
+    content_type, body = audio_probe_body(model)
     req = urllib.request.Request(
         endpoint, data=body, method="POST",
-        headers={"Content-Type": content_type, "Authorization": f"Bearer {token}"})
+        headers={"Content-Type": content_type, "Authorization": f"Bearer {token}",
+                 "User-Agent": "Vexa/1.0"})
     try:
         with urllib.request.urlopen(req, timeout=_STT_PROBE_TIMEOUT) as r:
             return r.status, r.read().decode("utf-8", "replace")
@@ -190,6 +191,11 @@ def _verify_transcribes(base: str, token: str, source: str, probe: TranscribePro
         status, body = probe(endpoint, token)
     except Exception as exc:
         return _result(False, f"Backend unreachable: {exc}", source=source)
+    if status == 403 and "1010" in (body or ""):
+        return _result(False, f"Request blocked by the backend's edge protection at {endpoint} "
+                              "(HTTP 403, code 1010). Check the HTTP client identity and network; "
+                              "this does not establish whether the token is valid.",
+                       source=source, status=status)
     if status in (401, 403):
         return _result(False, f"Token REJECTED by {endpoint} (HTTP {status}).", source=source,
                        status=status)
@@ -207,12 +213,16 @@ def _verify_transcribes(base: str, token: str, source: str, probe: TranscribePro
     if status >= 500:
         return _result(False, f"Backend error at {endpoint} (HTTP {status}).", source=source,
                        status=status)
+    if not 200 <= status < 300:
+        return _result(False, f"Transcription request failed at {endpoint} (HTTP {status}) — "
+                              "check the configured model, audio format, and provider limits.",
+                       source=source, status=status)
     return _result(True, f"OK — {endpoint} transcribed the probe clip{who} (HTTP {status}).",
                    source=source, status=status, account=account or None)
 
 
 def run_transcription_test(url: str, token: str, source: str, get: HttpGet = _get,
-                           probe: TranscribeProbe = _transcribe_probe) -> dict:
+                           probe: Optional[TranscribeProbe] = None, *, model: str = "whisper-1") -> dict:
     """A real round-trip test of the effective STT backend: transcribe a ~1s probe clip with the
     configured token — the same request (and the same probe body) a bot's first chunk and the boot
     preflight make, so the wizard can never green what the deployment refuses.
@@ -247,4 +257,6 @@ def run_transcription_test(url: str, token: str, source: str, get: HttpGet = _ge
                 account = ""
     except Exception:
         pass  # no /balance ⇒ not a Vexa gateway; the round-trip below is the oracle either way
+    if probe is None:
+        probe = lambda endpoint, key: _transcribe_probe(endpoint, key, model)
     return _verify_transcribes(base, token, source, probe, account)

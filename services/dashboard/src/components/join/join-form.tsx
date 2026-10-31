@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { vexaAPI } from "@/lib/api";
 import { useLiveStore } from "@/stores/live-store";
+import { DEFAULT_BOT_NAME, savedBotName } from "@/lib/bot-name";
 import { useRuntimeConfig } from "@/hooks/use-runtime-config";
 import type { Platform, CreateBotRequest } from "@/types/vexa";
 import { PLATFORM_CONFIG } from "@/types/vexa";
@@ -37,9 +38,9 @@ export function JoinForm({ onSuccess }: JoinFormProps) {
   const [passcode, setPasscode] = useState("");
   const [botName, setBotName] = useState(() => {
     if (typeof window !== "undefined") {
-      return localStorage.getItem("vexa-join-bot-name") || "Vexa";
+      return savedBotName(localStorage.getItem("vexa-join-bot-name"));
     }
-    return "Vexa";
+    return DEFAULT_BOT_NAME;
   });
   const [language, setLanguage] = useState("auto");
   const [transcribeEnabled, setTranscribeEnabled] = useState(true);
@@ -104,7 +105,7 @@ export function JoinForm({ onSuccess }: JoinFormProps) {
     }
 
     // Set bot name - use custom name or configured default
-    request.bot_name = botName.trim() || config?.defaultBotName || "Vexa";
+    request.bot_name = botName.trim() || config?.defaultBotName || DEFAULT_BOT_NAME;
 
     // Persist to localStorage
     if (typeof window !== "undefined") {

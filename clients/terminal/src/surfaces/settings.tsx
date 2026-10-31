@@ -158,6 +158,7 @@ function ModelsSection() {
   ];
   const transcriptionFields = [
     { key: "url", label: "Service URL", placeholder: "deployment default" },
+    { key: "model", label: "Model", placeholder: "whisper-1 (Groq: whisper-large-v3-turbo)" },
     { key: "token", label: "Token", placeholder: "unchanged unless typed", secret: true },
   ];
   const asStrings = (v: Record<string, unknown>): Record<string, string> => {

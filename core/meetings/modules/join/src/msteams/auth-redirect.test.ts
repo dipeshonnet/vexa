@@ -59,6 +59,7 @@ function mockPage(url: string | string[], visible: string[] = []): any {
   const node = (sel: string): any => ({
     first: () => node(sel),
     isVisible: async () => visible.some((v) => sel.includes(v)),
+    isEnabled: async () => true,
     waitFor: async () => { throw new Error(`timeout waiting for ${sel}`); },
     click: async () => { throw new Error(`no element for ${sel}`); },
     fill: async () => { throw new Error(`no element for ${sel}`); },
@@ -210,7 +211,7 @@ const PANTOMIME = ['Step 3:', 'Step 4:', 'Step 5:', 'Step 6:', 'Step 6b:'];
       'slow pre-join → the advisory readiness timeout still logs',
       logs.some((l) => l.includes('pre-join readiness')), true,
     );
-    check(`slow pre-join → the full wait is still spent: ${elapsedMs}ms`, elapsedMs > 45000, true);
+    check(`slow pre-join → the full wait is still spent: ${elapsedMs}ms`, elapsedMs >= 45000, true);
   }
 
   // ── 6. Any other non-meeting origin is terminal too, and says which ────────

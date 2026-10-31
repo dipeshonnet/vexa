@@ -349,6 +349,13 @@
       ]
     },
     {
+      "key": "TRANSCRIPTION_MODEL",
+      "class": "defaulted",
+      "default": "whisper-1",
+      "description": "Model for the deployment-default transcription audio probe; Settings backends supply their own model",
+      "targets": ["compose"]
+    },
+    {
       "key": "TRANSCRIPTION_SERVICE_TOKEN",
       "class": "defaulted",
       "default": "(unset)",

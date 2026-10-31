@@ -111,25 +111,30 @@ class TestSpawnFlagCallSites:
         monkeypatch.setenv("TRANSCRIBE_ENABLED", "true")
         assert _resolve_transcribe_enabled(False) is False
 
-    def test_empty_env_no_longer_disarms_the_fail_loud_stt_gate(self, monkeypatch):
-        """The second half of the witness bug: `"" != "true"` made the gate return None, so the
-        503 designed to catch an unconfigured STT never fired. Empty must now reach the gate."""
-        from meeting_api.bot_spawn import auto_join
+    async def test_empty_env_no_longer_disarms_the_fail_loud_stt_gate(self, monkeypatch):
+        """An empty flag keeps transcription enabled and shared spawn validation fail-loud."""
+        from datetime import datetime, timezone
+        from meeting_api.bot_spawn import auto_join, service
+        from meeting_api.bot_spawn.fakes import FakeRuntimeClient, InMemoryMeetingRepo
 
         monkeypatch.setenv("TRANSCRIBE_ENABLED", "")
-        monkeypatch.setattr(auto_join, "__name__", auto_join.__name__)
+        monkeypatch.delenv("TRANSCRIPTION_SERVICE_URL", raising=False)
+        monkeypatch.delenv("TRANSCRIPTION_SERVICE_TOKEN", raising=False)
+        now = datetime(2026, 10, 30, 12, 0, tzinfo=timezone.utc)
+        repo, runtime = InMemoryMeetingRepo(), FakeRuntimeClient()
+        repo._meetings[1] = {
+            "id": 1, "user_id": 7, "platform": "google_meet",
+            "native_meeting_id": "abc-defg-hij", "status": "scheduled",
+            "data": {"scheduled_at": now.isoformat(), "auto_join": True},
+        }
 
-        called = {"n": 0}
+        async def context(_uid):
+            return {"max_concurrent": 4}
 
-        def _fake_state(_cap):
-            called["n"] += 1
-            return "unset"
-
-        import meeting_api.config_preflight as cp
-
-        monkeypatch.setattr(cp, "capability_state", _fake_state)
-        monkeypatch.setattr(cp, "missing_capability_keys", lambda _c: ["TRANSCRIPTION_SERVICE_URL"])
-
-        reason = auto_join._production_transcribe_gate()
-        assert called["n"] == 1, "empty env must NOT short-circuit the gate"
-        assert reason is not None and "STT not configured" in reason
+        monkeypatch.setattr(service, "_fetch_bot_context", context)
+        result = await auto_join.auto_join_tick(
+            repo, runtime, now=now, fetch_bot_context=context,
+            token_secret="s", redis_url="redis://r",
+        )
+        assert result["errors"] == 1 and not runtime.specs
+        assert "no transcription backend configured" in repo._meetings[1]["data"]["auto_join_error"]

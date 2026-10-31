@@ -1,0 +1,1 @@
+- **Teams transcript retention.** Recognized words remain in the final transcript when transport timing cannot establish a speaker. Such rows stay unattributed, including after later naming hints.

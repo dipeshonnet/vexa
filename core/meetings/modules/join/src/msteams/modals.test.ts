@@ -33,6 +33,7 @@ function mockPage(visible: string[]): any {
       first: () => ({
         isVisible: async () => visible.includes(sel),
         click: async () => { clicks.push(sel); },
+        waitFor: async () => {},
       }),
     }),
     waitForTimeout: async () => {},

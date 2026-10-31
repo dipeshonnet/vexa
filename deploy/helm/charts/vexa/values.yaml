@@ -221,8 +221,8 @@ meetingApi:
   service:
     type: ClusterIP
     port: 8080
-  defaultBotName: "Vexa"    # the bot's display name; the terminal omits bot_name so this is what
-                            # participants see. Blank it to get the service's VexaBot-{random}.
+  defaultBotName: "Notetaker"    # the bot's display name; the terminal omits bot_name so this is what
+                            # participants see. Blank it to use the service default, Notetaker.
   transcriptionServiceUrl: ""   # STT endpoint the spawned bot transcribes against (empty ⇒ capture only)
   # Optional service-authority.v1 adapter JSON. Empty preserves stock OSS allow-all. A configured
   # authority must use failure_policy=closed and mode=enforce|observe; the secret lives under

@@ -103,6 +103,7 @@ export class TranscriptionClient {
   private minSilenceDurationMs: number | undefined;
   private model: string;
   private responseFormat: 'verbose_json' | 'json' = 'verbose_json';
+  private timestampField = 'timestamp_granularities';
   constructor(config: TranscriptionClientConfig) {
     // Ensure serviceUrl ends with the transcriptions endpoint
     this.serviceUrl = config.serviceUrl.replace(/\/+$/, '');
@@ -141,6 +142,12 @@ export class TranscriptionClient {
           log('[TranscriptionClient] backend rejected verbose_json; falling back to json for this and later requests');
           this.responseFormat = 'json';
           attempt--; // Capability negotiation does not consume a configured retry.
+          continue;
+        }
+        if (fault.kind === 'bad_request' && this.timestampField === 'timestamp_granularities' &&
+            /unknown param [`'"]?timestamp_granularities[`'"]?/i.test(fault.detail ?? '')) {
+          this.timestampField = 'timestamp_granularities[]';
+          attempt--; // Multipart array negotiation does not consume a retry.
           continue;
         }
         const isLastAttempt = attempt === this.maxRetries;
@@ -203,12 +210,15 @@ export class TranscriptionClient {
       ));
     }
 
-    // Request word-level timestamps
-    parts.push(Buffer.from(
-      `--${boundary}\r\n` +
-      `Content-Disposition: form-data; name="timestamp_granularities"\r\n\r\n` +
-      `word\r\n`
-    ));
+    // Array backends need segment timestamps as well to populate the segment contract.
+    const granularities = this.timestampField.endsWith('[]') ? ['word', 'segment'] : ['word'];
+    for (const granularity of granularities) {
+      parts.push(Buffer.from(
+        `--${boundary}\r\n` +
+        `Content-Disposition: form-data; name="${this.timestampField}"\r\n\r\n` +
+        `${granularity}\r\n`
+      ));
+    }
 
     // Max speech segment duration (controls how often Whisper splits segments)
     if (this.maxSpeechDurationSec !== undefined) {

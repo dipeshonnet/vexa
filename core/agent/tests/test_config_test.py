@@ -213,3 +213,39 @@ def test_transcription_probe_hits_the_transcriptions_path_once():
         assert seen == [("https://api.openai.com/v1/audio/transcriptions", "sk-good")], (
             f"{configured} → {seen}"
         )
+
+
+def test_transcription_client_identity_and_selected_model(monkeypatch):
+    seen = []
+    class Response:
+        status = 200
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def read(self): return b'{"text":"probe"}'
+    def open_request(req, timeout):
+        seen.append(req)
+        return Response()
+    monkeypatch.setattr(ct.urllib.request, "urlopen", open_request)
+    out = ct.run_transcription_test(
+        "https://api.groq.com/openai/v1/audio/transcriptions", "dummy", "settings",
+        get=_NO_BALANCE, model="whisper-large-v3-turbo")
+    assert out["ok"]
+    assert seen[0].get_header("User-agent") == "Vexa/1.0"
+    assert b'whisper-large-v3-turbo' in seen[0].data
+    assert seen[0].get_header("Authorization") == "Bearer dummy"
+
+
+def test_transcription_client_errors_never_test_green():
+    for status in (400, 405, 413, 422, 429):
+        out = ct.run_transcription_test("https://t", "dummy", "settings",
+            get=_NO_BALANCE, probe=lambda e, t: (status, '{"error":"invalid model"}'))
+        assert not out["ok"], status
+        assert out["status"] == status
+
+
+def test_transcription_edge_block_is_not_reported_as_invalid_token():
+    out = ct.run_transcription_test("https://t", "dummy", "settings",
+        get=_NO_BALANCE, probe=lambda e, t: (403, "error code: 1010"))
+    assert not out["ok"]
+    assert "1010" in out["summary"]
+    assert "Token REJECTED" not in out["summary"]

@@ -14,10 +14,10 @@ export DISPLAY="${DISPLAY:-:99}"
 
 echo "[entrypoint] Starting Xvfb on ${DISPLAY}..."
 Xvfb "${DISPLAY}" -screen 0 1920x1080x24 >/tmp/xvfb.log 2>&1 &
-# Give Xvfb a moment to create the socket before anything attaches.
-for _ in 1 2 3 4 5 6 7 8 9 10; do
+# Wait for the display socket; ready displays proceed immediately.
+for _ in {1..60}; do
   [ -e "/tmp/.X11-unix/X${DISPLAY#:}" ] && break
-  sleep 0.3
+  sleep 0.05
 done
 
 echo "[entrypoint] Starting fluxbox..."
@@ -25,7 +25,17 @@ fluxbox >/tmp/fluxbox.log 2>&1 &
 
 echo "[entrypoint] Starting PulseAudio (no idle exit)..."
 pulseaudio --start --exit-idle-time=-1 --log-target=syslog 2>/dev/null || true
-sleep 1
+audio_ready=false
+for _ in {1..20}; do
+  if pactl info >/dev/null 2>&1; then
+    audio_ready=true
+    break
+  fi
+  sleep 0.05
+done
+if [ "$audio_ready" != true ]; then
+  echo "[entrypoint] PulseAudio readiness not observed within 1s; attempting audio setup" >&2
+fi
 # Voice/capture audio graph (best-effort; only the speak path strictly needs it).
 pactl load-module module-null-sink sink_name=tts_sink \
   sink_properties=device.description="TTSAudioSink" 2>/dev/null || true

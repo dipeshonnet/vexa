@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { DEFAULT_BOT_NAME } from "@/lib/bot-name";
 import { calendarAPI, type CalendarConnection, type CalendarSyncStamp } from "@/lib/calendar-api";
 import { groupMeetingsByCalendar, isUpcomingAutoJoin, meetingParticipantCount } from "@/lib/calendar-view";
 import { vexaAPI } from "@/lib/api";
@@ -46,7 +47,7 @@ export default function CalendarPage() {
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [autoJoin, setAutoJoin] = useState(true);
-  const [newBotName, setNewBotName] = useState("Vexa");
+  const [newBotName, setNewBotName] = useState(DEFAULT_BOT_NAME);
   const [calendarBotNames, setCalendarBotNames] = useState<Record<string, string>>({});
   const [upcoming, setUpcoming] = useState<Meeting[]>([]);
   const [loading, setLoading] = useState(true);
@@ -59,7 +60,7 @@ export default function CalendarPage() {
         vexaAPI.getMeetings({ status: "scheduled", limit: 100 }),
       ]);
       setCalendars(items);
-      setCalendarBotNames(Object.fromEntries(items.map((calendar) => [calendar.id, calendar.bot_name || "Vexa"])));
+      setCalendarBotNames(Object.fromEntries(items.map((calendar) => [calendar.id, calendar.bot_name || DEFAULT_BOT_NAME])));
       const now = Date.now();
       setUpcoming(scheduled.meetings
         .filter((meeting) => isUpcomingAutoJoin(meeting, now))
@@ -89,7 +90,7 @@ export default function CalendarPage() {
     try {
       const updated = await calendarAPI.update(calendar.id, { bot_name: value });
       setCalendars((items) => items.map((item) => item.id === updated.id ? updated : item));
-      setCalendarBotNames((current) => ({ ...current, [updated.id]: updated.bot_name || "Vexa" }));
+      setCalendarBotNames((current) => ({ ...current, [updated.id]: updated.bot_name || DEFAULT_BOT_NAME }));
       try {
         const stamp = await calendarAPI.sync(calendar.id);
         setStamps((current) => ({ ...current, [calendar.id]: stamp }));
@@ -114,11 +115,11 @@ export default function CalendarPage() {
         name: name.trim(),
         ics_url: url.trim(),
         auto_join: autoJoin,
-        bot_name: newBotName.trim() || "Vexa",
+        bot_name: newBotName.trim() || DEFAULT_BOT_NAME,
       });
       setUrl("");
       setName("");
-      setNewBotName("Vexa");
+      setNewBotName(DEFAULT_BOT_NAME);
       try {
         const stamp = await calendarAPI.sync(created.id);
         setStamps((current) => ({ ...current, [created.id]: stamp }));
@@ -239,7 +240,7 @@ export default function CalendarPage() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="new-calendar-bot-name">Bot name</Label>
-              <Input id="new-calendar-bot-name" value={newBotName} onChange={(event) => setNewBotName(event.target.value)} maxLength={100} placeholder="Vexa" required />
+              <Input id="new-calendar-bot-name" value={newBotName} onChange={(event) => setNewBotName(event.target.value)} maxLength={100} placeholder={DEFAULT_BOT_NAME} required />
             </div>
             <Button type="submit" disabled={busy === "new" || !name.trim() || !url.trim()}>
               {busy === "new" ? <Loader2 className="h-4 w-4 animate-spin" /> : "Connect"}
@@ -336,16 +337,16 @@ export default function CalendarPage() {
                   <div className="flex gap-2">
                     <Input
                       id={`bot-name-${calendar.id}`}
-                      value={calendarBotNames[calendar.id] ?? calendar.bot_name ?? "Vexa"}
+                      value={calendarBotNames[calendar.id] ?? calendar.bot_name ?? DEFAULT_BOT_NAME}
                       onChange={(event) => setCalendarBotNames((current) => ({ ...current, [calendar.id]: event.target.value }))}
                       maxLength={100}
-                      placeholder="Vexa"
+                      placeholder={DEFAULT_BOT_NAME}
                     />
                     <Button
                       type="button"
                       variant="secondary"
                       onClick={() => void saveCalendarBotName(calendar)}
-                      disabled={busy === `bot-name:${calendar.id}` || !(calendarBotNames[calendar.id] || "").trim() || (calendarBotNames[calendar.id] || "").trim() === (calendar.bot_name || "Vexa")}
+                      disabled={busy === `bot-name:${calendar.id}` || !(calendarBotNames[calendar.id] || "").trim() || (calendarBotNames[calendar.id] || "").trim() === (calendar.bot_name || DEFAULT_BOT_NAME)}
                     >
                       {busy === `bot-name:${calendar.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
                     </Button>

@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { savedBotName } from "@/lib/bot-name";
 import { consumePendingMeetingUrl } from "@/lib/pending-meeting";
 import { parseMeetingInput } from "@/lib/parse-meeting-input";
 import { vexaAPI } from "@/lib/api";
@@ -43,7 +44,7 @@ export function usePendingMeeting() {
     if (parsed.originalUrl) {
       request.meeting_url = parsed.originalUrl;
     }
-    request.bot_name = "Vexa - Open Source Bot";
+    request.bot_name = savedBotName(localStorage.getItem("vexa-join-bot-name"));
 
     toast.promise(
       vexaAPI.createBot(request).then((meeting) => {

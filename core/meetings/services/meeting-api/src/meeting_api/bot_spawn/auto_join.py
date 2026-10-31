@@ -52,7 +52,7 @@ from ..service_authority import (
     ServiceAuthorityUnavailable,
 )
 from .env_flags import resolve_spawn_flag
-from .ports import MaxBotsExceeded, MeetingStopped, QuotaExceeded, SpawnFailed
+from .ports import MaxBotsExceeded, MeetingStopped, QuotaExceeded, SpawnFailed, TranscriptionNotConfigured
 from .service import DuplicateMeeting, request_bot
 
 # Sweep cadence/window env vocabulary (config.v1: all optional, sane defaults).
@@ -164,26 +164,6 @@ def _calendar_bot_name(data: dict) -> Optional[str]:
     return value.strip() if isinstance(value, str) and value.strip() else None
 
 
-def _production_transcribe_gate() -> Optional[str]:
-    """Mirror POST /bots' CC4 fail-loud STT gate: when transcription resolves ON (env default) but
-    the ``stt`` capability is not configured, refuse the auto-spawn with the reason string.
-
-    Read through ``env_flag`` for the same reason as router.py: with a bare ``os.getenv`` a
-    set-but-empty ``TRANSCRIBE_ENABLED=`` made ``"" != "true"`` true, so this gate returned None and
-    refused nothing — the empty value both disabled transcription AND disarmed the alarm meant to
-    catch it. That double failure is why the v0.12.5 witness saw silence with no error."""
-    from ..config_preflight import CONFIGURED, capability_state, missing_capability_keys
-    from .env_flags import env_flag
-
-    if not env_flag("TRANSCRIBE_ENABLED", True):
-        return None
-    state = capability_state("stt")
-    if state != CONFIGURED:
-        unset = ", ".join(missing_capability_keys("stt"))
-        return f"STT not configured (capability 'stt' is {state}: {unset} unset)"
-    return None
-
-
 async def auto_join_tick(
     repo,
     runtime,
@@ -218,7 +198,6 @@ async def auto_join_tick(
     ``publish_status(user_id=…, meeting_id=…, native_id=…, status=…, when=…)`` optionally fans the
     row's frame to ``u:{user}:meetings`` after an error stamp so the terminal refreshes."""
     now = now or datetime.now(timezone.utc)
-    gate = transcribe_gate if transcribe_gate is not None else _production_transcribe_gate
 
     rows = await repo.list_scheduled_meetings()
     due = due_rows(rows, now=now, lead_s=lead_s, grace_s=grace_s,
@@ -277,7 +256,9 @@ async def auto_join_tick(
                 counter="skipped_live", event="auto_join_skipped_live",
             )
             continue
-        gate_error = gate()
+        # The shared request_bot flow resolves Settings and environment backends
+        # and validates transcription before writing or spawning a workload.
+        gate_error = transcribe_gate() if transcribe_gate is not None else None
         if gate_error:
             await _stamp_error(row, gate_error)
             continue
@@ -344,7 +325,7 @@ async def auto_join_tick(
                       user_id=user_id, meeting_id=str(row["id"]),
                       fields={"reason": "the user stopped this meeting while the bot was starting"})
             continue
-        except (MaxBotsExceeded, QuotaExceeded) as e:
+        except (MaxBotsExceeded, QuotaExceeded, TranscriptionNotConfigured) as e:
             await _stamp_error(row, str(e) or "bot concurrency limit reached")
             continue
         except ServiceAuthorityDenied as e:

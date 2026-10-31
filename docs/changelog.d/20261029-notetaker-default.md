@@ -1,0 +1,1 @@
+- **Default bot participant name.** New manual and calendar joins default to `Notetaker`. The dashboard refreshes saved stock Vexa names to `Notetaker`; custom names remain configurable.

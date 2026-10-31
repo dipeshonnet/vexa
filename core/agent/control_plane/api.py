@@ -2274,11 +2274,11 @@ def create_app(
 
     @app.get("/api/transcription/test")
     def transcription_test(request: Request):
-        """Probe the effective STT backend with its token (GET /balance): catches dead URLs,
-        rejected tokens, and the zero-balance-external-account case that 402s every segment."""
+        """Transcribe probe audio with the effective backend, token, and model."""
         from control_plane import config_test as _ct
         subject = subject_of(request)
         url, token, source = "", "", "env"
+        model = os.environ.get("TRANSCRIPTION_MODEL") or "whisper-1"
         settings = dispatcher.settings
         admin = (settings.admin_api_url or "").rstrip("/")
         if admin:  # same internal edge bot_spawn uses (bot-context carries the resolved override)
@@ -2290,16 +2290,15 @@ def create_app(
                 with _ur.urlopen(req, timeout=5) as r:
                     body = json.loads(r.read())
                 t = body.get("transcription") or {}
-                if t.get("url") or t.get("token"):
-                    url, token, source = t.get("url") or "", t.get("token") or "", "settings"
+                if t.get("url"):
+                    url, token, source = t["url"], t.get("token") or "", "settings"
+                    model = t.get("model") or "whisper-1"
             except Exception:
                 pass  # fall through to env — the probe result still says what was tested
         if not url:
             url = os.environ.get("TRANSCRIPTION_SERVICE_URL", "")
             token = token or os.environ.get("TRANSCRIPTION_SERVICE_TOKEN", "")
-        elif not token:
-            token = os.environ.get("TRANSCRIPTION_SERVICE_TOKEN", "")
-        return _ct.run_transcription_test(url, token, source)
+        return _ct.run_transcription_test(url, token, source, model=model)
     return app
 
 

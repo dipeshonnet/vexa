@@ -1,4 +1,5 @@
 import type { Meeting } from "@/types/vexa";
+import { DEFAULT_BOT_NAME } from "@/lib/bot-name";
 import type { CalendarConnection } from "@/lib/calendar-api";
 
 export interface CalendarMeetingGroup {
@@ -31,7 +32,7 @@ export function groupMeetingsByCalendar(
     groups.set(calendar.id, {
       id: calendar.id,
       name: calendar.name,
-      botName: calendar.bot_name || "Vexa",
+      botName: calendar.bot_name || DEFAULT_BOT_NAME,
       meetings: [],
     });
   }
@@ -44,7 +45,7 @@ export function groupMeetingsByCalendar(
       const group = groups.get(source.id) ?? {
         id: source.id,
         name: source.name,
-        botName: source.bot_name || "Vexa",
+        botName: source.bot_name || DEFAULT_BOT_NAME,
         meetings: [],
       };
       group.meetings.push(meeting);

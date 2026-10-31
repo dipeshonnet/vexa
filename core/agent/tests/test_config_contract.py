@@ -92,3 +92,54 @@ def test_health_degraded_path_still_carries_rows():
     body = r.json()
     assert body["status"] == "degraded"
     assert "capabilities" in body
+
+
+@pytest.mark.parametrize("configured, expected", [
+    ({"url": "https://customer", "token": "customer-key", "model": "whisper-large-v3-turbo"},
+     ("https://customer", "customer-key", "settings", "whisper-large-v3-turbo")),
+    ({"url": "https://customer"}, ("https://customer", "", "settings", "whisper-1")),
+    ({}, ("https://deployment", "deployment-key", "env", "deployment-model")),
+])
+def test_transcription_route_tests_the_bots_effective_config(monkeypatch, configured, expected):
+    import json
+    import urllib.request
+    from control_plane import config_test
+    from pydantic import SecretStr
+
+    monkeypatch.setenv("TRANSCRIPTION_SERVICE_URL", "https://deployment")
+    monkeypatch.setenv("TRANSCRIPTION_SERVICE_TOKEN", "deployment-key")
+    monkeypatch.setenv("TRANSCRIPTION_MODEL", "deployment-model")
+    monkeypatch.delenv("VEXA_REQUIRE_GATEWAY_IDENTITY", raising=False)
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def read(self): return json.dumps({"transcription": configured}).encode()
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **kw: Response())
+    seen = []
+    def probe(url, token, source, *, model):
+        seen.append((url, token, source, model))
+        return {"ok": True, "summary": "probe"}
+    monkeypatch.setattr(config_test, "run_transcription_test", probe)
+    settings = load_settings().model_copy(update={
+        "admin_api_url": "http://identity", "internal_api_secret": SecretStr("internal")})
+    app = create_app(Dispatcher(settings, _FakeRuntime(), _FakeIdentity()))
+    response = TestClient(app).get("/api/transcription/test", headers={"X-User-Id": "2"})
+    assert response.status_code == 200
+    assert seen == [expected]
+
+
+def test_shared_audio_probe_identifies_the_application(monkeypatch):
+    import urllib.request
+    seen = []
+    class Response:
+        status = 200
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+    def open_request(req, timeout):
+        seen.append(req)
+        return Response()
+    monkeypatch.setattr(urllib.request, "urlopen", open_request)
+    out = cp._http_probe({"url_key": "URL", "auth_key": "TOKEN", "payload": "audio"},
+                         {"URL": "https://stt", "TOKEN": "dummy"}, 1)
+    assert out["ok"]
+    assert seen[0].get_header("User-agent") == "Vexa/1.0"

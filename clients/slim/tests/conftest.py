@@ -80,7 +80,7 @@ class FakeAgent(_Recorder):
 
 
 class FakeMeetings(_Recorder):
-    async def send_bot(self, native, *, url, platform="google_meet", bot_name="VexaSlim", language="en"):
+    async def send_bot(self, native, *, url, platform="google_meet", bot_name="Notetaker", language="en"):
         self._record("send_bot", native=native, url=url, platform=platform)
         return {"ok": True, "bot": bot_name}
 

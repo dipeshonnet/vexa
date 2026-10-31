@@ -18,6 +18,7 @@ import { vexaAPI, VexaAPIError } from "@/lib/api";
 import { useLiveStore } from "@/stores/live-store";
 import { useJoinModalStore } from "@/stores/join-modal-store";
 import { useMeetingsStore } from "@/stores/meetings-store";
+import { DEFAULT_BOT_NAME, savedBotName } from "@/lib/bot-name";
 import { useRuntimeConfig } from "@/hooks/use-runtime-config";
 import type { Platform, CreateBotRequest } from "@/types/vexa";
 import { LanguagePicker } from "@/components/language-picker";
@@ -45,9 +46,9 @@ export function JoinModal() {
   const [transcribeEnabled, setTranscribeEnabled] = useState(true);
   const [botName, setBotName] = useState(() => {
     if (typeof window !== "undefined") {
-      return localStorage.getItem("vexa-join-bot-name") || "Vexa";
+      return savedBotName(localStorage.getItem("vexa-join-bot-name"));
     }
-    return "Vexa";
+    return DEFAULT_BOT_NAME;
   });
   const [passcode, setPasscode] = useState("");
   const [authenticated, setAuthenticated] = useState(false);
@@ -143,7 +144,7 @@ export function JoinModal() {
       request.meeting_url = parsedInput.originalUrl;
     }
 
-    request.bot_name = botName.trim() || config?.defaultBotName || "Vexa";
+    request.bot_name = botName.trim() || config?.defaultBotName || DEFAULT_BOT_NAME;
 
     if (language && language !== "auto") {
       request.language = language;
@@ -392,7 +393,7 @@ export function JoinModal() {
             </Label>
             <Input
               id="botName"
-              placeholder="Vexa"
+              placeholder={DEFAULT_BOT_NAME}
               value={botName}
               onChange={(e) => setBotName(e.target.value)}
               className="h-10"

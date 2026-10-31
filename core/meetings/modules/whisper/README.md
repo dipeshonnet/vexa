@@ -25,3 +25,5 @@ pnpm --filter @vexa/transcribe-whisper test   # the stt.v1 low-confidence filter
 `gate:node` runs the **offline** filter golden here; the HTTP client is exercised
 end-to-end by pipeline replay (3.2) and live L4. Covered by `gate:node`,
 `gate:isolation`, `gate:exports`, `gate:readme`.
+
+Multipart timestamp fields negotiate array encoding when the backend explicitly rejects the scalar field. Array requests include both word and segment timing, and the accepted encoding is reused for later windows. Other HTTP 400 errors remain non-retryable.

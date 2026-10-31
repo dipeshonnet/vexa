@@ -33,7 +33,7 @@ function withCleanup(): () => void {
 {
   const restore = withCleanup();
   delete process.env.DEFAULT_BOT_NAME;
-  assert('fallback to "Vexa Join Layer" when env unset', defaultBotName(), 'Vexa Join Layer');
+  assert('fallback to "Notetaker" when env unset', defaultBotName(), 'Notetaker');
   restore();
 }
 
@@ -41,11 +41,11 @@ function withCleanup(): () => void {
 {
   const restore = withCleanup();
   delete process.env.DEFAULT_BOT_NAME;
-  assert('initial call without env', defaultBotName(), 'Vexa Join Layer');
+  assert('initial call without env', defaultBotName(), 'Notetaker');
   process.env.DEFAULT_BOT_NAME = 'MyBot';
   assert('after setting env', defaultBotName(), 'MyBot');
   delete process.env.DEFAULT_BOT_NAME;
-  assert('after deleting env', defaultBotName(), 'Vexa Join Layer');
+  assert('after deleting env', defaultBotName(), 'Notetaker');
   restore();
 }
 

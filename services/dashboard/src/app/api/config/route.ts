@@ -1,3 +1,4 @@
+import { DEFAULT_BOT_NAME } from "@/lib/bot-name";
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getAuthCookieName } from "@/lib/auth-cookies";
@@ -61,7 +62,7 @@ export async function GET(request: NextRequest) {
     || null;
 
   // Get default bot name from environment (optional)
-  const defaultBotName = process.env.DEFAULT_BOT_NAME || null;
+  const defaultBotName = process.env.DEFAULT_BOT_NAME || DEFAULT_BOT_NAME;
 
   // Hosted mode flags (read at runtime, not build time)
   const hostedMode = process.env.NEXT_PUBLIC_HOSTED_MODE === "true";

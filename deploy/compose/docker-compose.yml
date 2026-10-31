@@ -340,7 +340,7 @@ services:
       - INTERNAL_API_SECRET=${INTERNAL_API_SECRET}
       # The bot's display name in the meeting. The terminal omits bot_name on join, so this is what
       # participants see; set DEFAULT_BOT_NAME in .env and restart meeting-api (no terminal rebuild).
-      - DEFAULT_BOT_NAME=${DEFAULT_BOT_NAME:-Vexa}
+      - DEFAULT_BOT_NAME=${DEFAULT_BOT_NAME:-Notetaker}
       # The background sweeps' internal lookups: auto-join fetches per-user spawn context
       # (/internal/users/{id}/bot-context) and calendar sync discovers connected ICS feeds
       # (/internal/calendar-configs). Unset -> calendar sync no-ops, auto-join spawns uncapped.
@@ -1004,7 +1004,7 @@ services:
       - JWT_SECRET=${NEXTAUTH_SECRET:-dev-nextauth-secret}
       - ALLOW_REGISTRATIONS=${DASHBOARD_ALLOW_REGISTRATIONS:-true}
       - NEXT_PUBLIC_HOSTED_MODE=false
-      - DEFAULT_BOT_NAME=${DEFAULT_BOT_NAME:-Vexa}
+      - DEFAULT_BOT_NAME=${DEFAULT_BOT_NAME:-Notetaker}
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/',r=>process.exit(r.statusCode<500?0:1)).on('error',()=>process.exit(1))"]
       interval: 10s

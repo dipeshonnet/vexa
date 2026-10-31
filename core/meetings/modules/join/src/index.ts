@@ -81,7 +81,7 @@ export function resolvePlatform(meetingUrl: string): Platform {
  */
 /** Default bot name, reads env at call time so tests and the server-side proxy observe it when set. */
 export function defaultBotName(): string {
-  return process.env.DEFAULT_BOT_NAME?.trim() || "Vexa Join Layer";
+  return process.env.DEFAULT_BOT_NAME?.trim() || "Notetaker";
 }
 
 export async function joinMeeting(page: Page, opts: JoinOptions): Promise<JoinResult> {

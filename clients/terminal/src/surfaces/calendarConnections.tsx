@@ -93,7 +93,7 @@ function EditPanel({ cal, busy, onSave, onCancel }: {
       </label>
       <label style={labelled}>
         <span style={labelCol}>Bot name</span>
-        <input value={botName} onChange={(e) => setBotName(e.target.value)} maxLength={100} placeholder="Vexa"
+        <input value={botName} onChange={(e) => setBotName(e.target.value)} maxLength={100} placeholder="Notetaker"
           style={field} aria-label={`Bot name for ${cal.name}`} />
       </label>
       <label style={labelled}>
@@ -157,7 +157,7 @@ function CalendarRow({ cal, stamp, busy, onPatch, onSync, onDisconnect }: {
             onChange={(e) => onPatch({ auto_join: e.target.checked })} />
           Auto-join — send the bot to this calendar&rsquo;s meetings
         </label>
-        <span style={meta}>Bot name <span style={{ color: "var(--t2)", fontFamily: "var(--mono)" }}>{cal.bot_name || "Vexa"}</span></span>
+        <span style={meta}>Bot name <span style={{ color: "var(--t2)", fontFamily: "var(--mono)" }}>{cal.bot_name || "Notetaker"}</span></span>
       </div>
 
       {confirming && (
@@ -214,7 +214,7 @@ function AddCalendarForm({ busy, onAdd, onCancel }: {
       </label>
       <label style={labelled}>
         <span style={labelCol}>Bot name</span>
-        <input value={botName} onChange={(e) => setBotName(e.target.value)} maxLength={100} placeholder="Vexa"
+        <input value={botName} onChange={(e) => setBotName(e.target.value)} maxLength={100} placeholder="Notetaker"
           style={field} aria-label="Bot name for the new calendar" />
       </label>
       <label style={{ ...checkRow, paddingLeft: 104 }}>

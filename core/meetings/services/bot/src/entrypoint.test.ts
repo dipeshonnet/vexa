@@ -27,7 +27,7 @@ const check = (name: string, cond: boolean, detail = '') => {
 };
 
 /** Stub the X11/audio bringup (Xvfb, fluxbox, pulseaudio, pactl) as no-ops on PATH. */
-function makeStubBin(root: string): string {
+function makeStubBin(root: string, audioReadyAfter?: number): string {
   const bin = join(root, 'bin');
   mkdirSync(bin, { recursive: true });
   for (const name of ['Xvfb', 'fluxbox', 'pulseaudio', 'pactl']) {
@@ -35,15 +35,30 @@ function makeStubBin(root: string): string {
     writeFileSync(p, '#!/bin/sh\nexit 0\n');
     chmodSync(p, 0o755);
   }
+  if (audioReadyAfter !== undefined) {
+    const pactl = join(bin, 'pactl');
+    writeFileSync(pactl, `#!/bin/sh
+if [ "$1" = info ]; then
+  count=0
+  [ ! -f "$AUDIO_POLL_FILE" ] || count=$(cat "$AUDIO_POLL_FILE")
+  count=$((count + 1))
+  echo "$count" > "$AUDIO_POLL_FILE"
+  [ "$count" -gt ${audioReadyAfter} ] || exit 1
+  touch "$AUDIO_READY_FILE"
+fi
+exit 0
+`);
+    chmodSync(pactl, 0o755);
+  }
   return bin;
 }
 
 interface RunResult { code: number | null; stdout: string; }
 
 /** Run the real entrypoint.sh with a stub worker; optionally SIGTERM the LEADER (docker-style). */
-function runEntrypoint(workerJs: string, opts: { sigtermAfterMs?: number } = {}): Promise<RunResult> {
+function runEntrypoint(workerJs: string, opts: { sigtermAfterMs?: number; audioReadyAfter?: number } = {}): Promise<RunResult> {
   const root = mkdtempSync(join(tmpdir(), 'bot-entrypoint-'));
-  const bin = makeStubBin(root);
+  const bin = makeStubBin(root, opts.audioReadyAfter);
   const appDir = join(root, 'app');
   mkdirSync(appDir, { recursive: true });
   writeFileSync(join(appDir, 'worker.cjs'), workerJs);
@@ -55,6 +70,8 @@ function runEntrypoint(workerJs: string, opts: { sigtermAfterMs?: number } = {})
       BOT_APP_DIR: appDir,
       BOT_WORKER_ENTRY: 'worker.cjs',
       DISPLAY: ':99',
+      AUDIO_POLL_FILE: join(root, 'audio-polls'),
+      AUDIO_READY_FILE: join(root, 'audio-ready'),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: true, // its own process group — SIGTERM hits ONLY the leader, like docker's PID 1
@@ -99,7 +116,25 @@ console.log('WORKER-READY');
 process.exit(7);
 `;
 
+const AUDIO_READY_WORKER = `
+const fs = require('node:fs');
+console.log('AUDIO-READY-AT-WORKER ' + fs.existsSync(process.env.AUDIO_READY_FILE));
+`;
+
 const main = async () => {
+  {
+    const r = await runEntrypoint(AUDIO_READY_WORKER, { audioReadyAfter: 3 });
+    check('worker waits for audio readiness after transient connection failures',
+      r.code === 0 && r.stdout.includes('AUDIO-READY-AT-WORKER true'), r.stdout.slice(-500));
+    check('recovered audio does not report a readiness timeout',
+      !r.stdout.includes('readiness not observed'), r.stdout.slice(-500));
+  }
+  {
+    const r = await runEntrypoint(AUDIO_READY_WORKER, { audioReadyAfter: 1000 });
+    check('missing audio readiness is bounded and observable',
+      r.code === 0 && r.stdout.includes('readiness not observed within 1s')
+        && r.stdout.includes('AUDIO-READY-AT-WORKER false'), r.stdout.slice(-500));
+  }
   {
     const r = await runEntrypoint(GRACEFUL_WORKER, { sigtermAfterMs: 50 });
     check('SIGTERM to the entrypoint is FORWARDED to the worker',

@@ -15,6 +15,7 @@ export type ModelPrefs = {
 };
 
 export type TranscriptionPrefs = {
+  model?: string | null;
   url?: string | null;
   token_set?: boolean;
   token?: string | null; // masked on read — write-only in the clear
@@ -47,7 +48,7 @@ export async function getTranscriptionPrefs(): Promise<TranscriptionPrefs> {
   return jsonOrThrow(await fetch("/api/user/transcription", { cache: "no-store" }));
 }
 
-export async function setTranscriptionPrefs(update: { url?: string; token?: string }): Promise<TranscriptionPrefs> {
+export async function setTranscriptionPrefs(update: { url?: string; token?: string; model?: string }): Promise<TranscriptionPrefs> {
   return jsonOrThrow(await fetch("/api/user/transcription", {
     method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(update),
   }));

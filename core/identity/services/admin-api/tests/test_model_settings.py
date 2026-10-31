@@ -149,3 +149,21 @@ def test_bot_context_carries_effective_transcription(client):
     cfg = client.get("/user/transcription", headers={"X-API-Key": tok}).json()
     assert cfg["url"] == "https://stt-mine.example.com"
     assert cfg["token_set"] is False
+
+
+
+def test_transcription_model_is_saved_returned_and_resolved(client):
+    uid, tok = _user_token(client, email="stt-model@example.com")
+    headers = {"X-API-Key": tok}
+    response = client.put("/user/transcription", headers=headers, json={
+        "url": "https://api.groq.com/openai/v1/audio/transcriptions",
+        "model": "whisper-large-v3-turbo", "token": "dummy-groq-token"})
+    assert response.status_code == 200
+    assert response.json()["model"] == "whisper-large-v3-turbo"
+    assert "dummy-groq-token" not in response.text
+    assert client.get("/user/transcription", headers=headers).json()["model"] == "whisper-large-v3-turbo"
+    effective = client.get(f"/internal/users/{uid}/bot-context", headers=_internal()).json()
+    assert effective["transcription"]["model"] == "whisper-large-v3-turbo"
+    assert effective["transcription"]["token"] == "dummy-groq-token"
+    cleared = client.put("/user/transcription", headers=headers, json={"model": ""})
+    assert cleared.json()["model"] is None

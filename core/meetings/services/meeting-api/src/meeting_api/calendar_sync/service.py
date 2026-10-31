@@ -311,7 +311,7 @@ def _source_entry(calendar_id: str, calendar_name: Optional[str], uid: str,
                   auto_join: bool, *, bot_name: Optional[str] = None,
                   metadata: Optional[dict] = None) -> dict:
     source = {"id": calendar_id, "name": calendar_name or "Calendar", "uid": uid,
-              "auto_join": bool(auto_join), "bot_name": bot_name or "Vexa"}
+              "auto_join": bool(auto_join), "bot_name": bot_name or "Notetaker"}
     if metadata:
         source["event"] = metadata
     return source

@@ -3,25 +3,12 @@ import { log } from "../_host";
 import { teamsContinueWithoutMediaSelectors } from "./selectors";
 
 /**
- * Dismiss the Teams "Are you sure you don't want audio or video?" confirmation
- * modal. Ported from Vexa-ai/vexa#467 (@lucasantoro97).
+ * Dismiss the Teams audio/video confirmation and observe it becoming hidden.
+ * It can cover Join now before a click or appear after submitting it.
+ * Join and admission checks share this handler so the visible pre-join button
+ * behind the overlay does not trap the bot in a false lobby state.
  *
- * Teams' anonymous "light meeting" flow renders this modal when "Join now" is
- * clicked while camera + mic are off. CRITICAL: in this flow the modal appears
- * AFTER the Join-now click, not before — so the pre-join readiness handler in
- * join.ts (which clicks the same button earlier) never sees it.
- *
- * Left undismissed it BLOCKS the join indefinitely, and worse: the underlying
- * pre-join "Join now" button stays in the DOM behind the modal. The admission
- * detector counts a visible "Join now" as a waiting-room indicator
- * (selectors.ts teamsWaitingRoomIndicators), so the bot loops
- * "Still in Teams waiting room…" forever instead of clicking through.
- *
- * This helper is the single point that clears it. Call it both right after the
- * Join-now click (join.ts) and inside the admission wait loops (admission.ts)
- * so the modal is handled no matter when Teams decides to show it.
- *
- * Returns true if the modal was found and a dismiss click was issued.
+ * Returns true once the confirmation was clicked and its control is hidden.
  */
 export async function dismissTeamsAvConfirmModal(page: Page): Promise<boolean> {
   const selector = teamsContinueWithoutMediaSelectors.join(", ");
@@ -30,7 +17,7 @@ export async function dismissTeamsAvConfirmModal(page: Page): Promise<boolean> {
     if (await btn.isVisible().catch(() => false)) {
       await btn.click({ timeout: 5000 });
       log('✅ Dismissed "Continue without audio or video" confirmation modal');
-      await page.waitForTimeout(500);
+      await btn.waitFor({ state: 'hidden', timeout: 1000 });
       return true;
     }
   } catch (err: any) {

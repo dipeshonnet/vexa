@@ -34,7 +34,8 @@ async function warmUpTeamsMediaDevices(page: Page): Promise<void> {
         if (!navigator.mediaDevices?.getUserMedia) {
           return "getUserMedia unavailable";
         }
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+        // The bot receives audio without requiring a camera device.
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         const tracks = stream.getTracks();
         tracks.forEach((track) => track.stop());
         return `media warm-up success (tracks=${tracks.length})`;
@@ -99,7 +100,7 @@ async function waitForTeamsPreJoinReadiness(
       } catch (err: any) {
         log(`ℹ️ Could not click "Continue without audio or video": ${err?.message || err}`);
       }
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(100);
       continue;
     }
 
@@ -131,9 +132,9 @@ async function waitForTeamsPreJoinReadiness(
       continueClickAttempts += 1;
       log(`ℹ️ Continue button still visible, clicking again (attempt ${continueClickAttempts})...`);
       try {
-        await page.locator(teamsContinueButtonSelectors[0]).first().click();
+        await page.locator(teamsContinueButtonSelectors[0]).first().click({ timeout: 1000 });
       } catch {}
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(100);
       continue;
     }
 
@@ -170,7 +171,6 @@ export async function joinMicrosoftTeams(
   // errors already follow — the query is dropped whole rather than filtered key by key.
   log(`Step 1: Navigating to Teams meeting: ${redactUrl(meetingUrl)}`);
   await page.goto(meetingUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
-  await page.waitForTimeout(500);
 
   // Fix 2: Propagate JOINING callback failure — bot must NOT proceed if server rejected
   await callJoiningCallback(botConfig);
@@ -181,18 +181,6 @@ export async function joinMicrosoftTeams(
   // and each one of them "succeeds" quietly by continuing.
   if (isMicrosoftLoginUrl(page.url())) throw authRedirectError(page.url());
   const requestedHost = meetingOriginHost(meetingUrl);
-
-  log("Step 2: Looking for 'Continue on this browser' button...");
-  try {
-    const continueButton = page.locator(teamsContinueButtonSelectors[0]).first();
-    await continueButton.waitFor({ timeout: 10000 });
-    await continueButton.click();
-    log("✅ Clicked 'Continue on this browser' button");
-    // Brief wait before pre-join readiness loop takes over
-    await page.waitForTimeout(500);
-  } catch (error) {
-    log("ℹ️ Continue button not found, continuing...");
-  }
 
   log("Step 2.5: Waiting for Teams pre-join controls...");
   await waitForTeamsPreJoinReadiness(page, 45000, requestedHost);
@@ -205,9 +193,10 @@ export async function joinMicrosoftTeams(
   // Turn camera off to be unobtrusive
   try {
     const cameraButton = page.locator(teamsCameraButtonSelectors[0]);
-    await cameraButton.waitFor({ timeout: 5000 });
-    await cameraButton.click();
-    log("✅ Camera turned off");
+    if (await cameraButton.isVisible()) {
+      await cameraButton.click({ timeout: 1000 });
+      log("✅ Camera turned off");
+    }
   } catch (error) {
     log("ℹ️ Camera button not found or already off");
   }
@@ -215,9 +204,10 @@ export async function joinMicrosoftTeams(
   log("Step 4: Trying to set display name...");
   try {
     const nameInput = page.locator(teamsNameInputSelectors.join(', ')).first();
-    await nameInput.waitFor({ timeout: 5000 });
-    await nameInput.fill(botName);
-    log(`✅ Display name set to "${botName}"`);
+    if (await nameInput.isVisible()) {
+      await nameInput.fill(botName, { timeout: 1000 });
+      log(`✅ Display name set to "${botName}"`);
+    }
   } catch (error) {
     log("ℹ️ Display name input not found, continuing...");
   }
@@ -281,22 +271,30 @@ export async function joinMicrosoftTeams(
 
   log("Step 6: Clicking 'Join now' to enter the meeting...");
   try {
-    // Use the more specific "Join now" selector first to avoid ambiguity
+    await dismissTeamsAvConfirmModal(page);
     const joinNowButton = page.locator('button:has-text("Join now")').first();
-    const joinNowVisible = await joinNowButton.isVisible().catch(() => false);
-
-    if (joinNowVisible) {
-      await joinNowButton.click();
-      log("✅ Clicked 'Join now' button");
-    } else {
-      // Fall back to generic join selectors
-      const fallbackJoinButton = page.locator(teamsJoinButtonSelectors.join(', ')).first();
-      await fallbackJoinButton.waitFor({ timeout: 10000 });
-      await fallbackJoinButton.click();
-      log("✅ Clicked join button (fallback selector)");
+    const joinButton = await joinNowButton.isVisible().catch(() => false)
+      ? joinNowButton
+      : page.locator(teamsJoinButtonSelectors.join(', ')).first();
+    await joinButton.waitFor({ timeout: 10000 });
+    // Teams can render the button before enabling it. Preserve that readiness
+    // allowance separately from the short click blocked by an overlay.
+    const enabledDeadline = Date.now() + 10000;
+    while (!await joinButton.isEnabled() && Date.now() < enabledDeadline) {
+      await dismissTeamsAvConfirmModal(page);
+      await page.waitForTimeout(100);
     }
-    // Brief wait for Teams to start processing the join request
-    await page.waitForTimeout(1000);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await dismissTeamsAvConfirmModal(page);
+      try {
+        await joinButton.click({ timeout: 1000 });
+        log("✅ Clicked 'Join now' button");
+        break;
+      } catch (error) {
+        // Retry only when an observed AV confirmation explains the blocked click.
+        if (attempt === 2 || !await dismissTeamsAvConfirmModal(page)) throw error;
+      }
+    }
   } catch (error) {
     log("⚠️ Join button not found — bot may not be able to enter the meeting");
   }
@@ -310,13 +308,17 @@ export async function joinMicrosoftTeams(
   // Poll briefly: dismiss the modal, re-click "Join now", and stop once we've
   // reached the lobby or been admitted. See modals.ts for the full rationale.
   log("Step 6c: Handling post-join AV-confirmation modal (if shown)...");
-  for (let attempt = 0; attempt < 6; attempt++) {
+  for (let attempt = 0; attempt < 10; attempt++) {
     const dismissed = await dismissTeamsAvConfirmModal(page);
     if (dismissed) {
       const joinAgain = page.locator('button:has-text("Join now")').first();
       if (await joinAgain.isVisible().catch(() => false)) {
-        await joinAgain.click().catch(() => {});
-        log("✅ Re-clicked 'Join now' after dismissing AV-confirmation modal");
+        try {
+          await joinAgain.click({ timeout: 1000 });
+          log("✅ Re-clicked 'Join now' after dismissing AV-confirmation modal");
+        } catch {
+          log("⚠️ Join click after AV confirmation did not complete; admission checks will observe the result");
+        }
       }
     }
 
@@ -332,12 +334,13 @@ export async function joinMicrosoftTeams(
       .isVisible()
       .catch(() => false);
     const modalStillThere = await isTeamsAvConfirmModalVisible(page);
-    if (inLobby || admitted || (!dismissed && !modalStillThere)) {
+    const stillPreJoin = await page.locator('button:has-text("Join now")').first().isVisible().catch(() => false);
+    if (inLobby || admitted || (!stillPreJoin && !modalStillThere)) {
       if (inLobby) log("✅ Reached Teams lobby after Join now");
       if (admitted) log("✅ Admitted to Teams meeting after Join now");
       break;
     }
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(100);
   }
 
   // Mute mic for all bots after join. TTS bots unmute only when speaking
@@ -345,7 +348,6 @@ export async function joinMicrosoftTeams(
   log("Step 6b: Muting mic...");
   try {
     await page.keyboard.press("Control+Shift+M");
-    await page.waitForTimeout(200);
     log("✅ Mic muted via Ctrl+Shift+M");
   } catch (error) {
     log("ℹ️ Could not mute mic via keyboard shortcut");

@@ -190,7 +190,7 @@ class MeetingsApi(_Domain):
     PREFIX = ""
 
     async def send_bot(self, native: str, *, url: str, platform: str = "google_meet",
-                       bot_name: str = "VexaSlim", language: str = "en") -> dict:
+                       bot_name: str = "Notetaker", language: str = "en") -> dict:
         body = {"platform": platform, "native_meeting_id": native,
                 "bot_name": bot_name, "language": language, "url": url}
         async with httpx.AsyncClient(timeout=30.0) as c:

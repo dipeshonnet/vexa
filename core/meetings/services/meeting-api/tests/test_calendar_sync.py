@@ -314,9 +314,9 @@ async def test_two_calendars_same_native_meeting_share_one_row_and_both_sources(
     assert [{key: source[key] for key in ("id", "name", "uid", "auto_join", "bot_name")}
             for source in sources] == [
         {"id": "work", "name": "Work", "uid": "uid-1", "auto_join": False,
-         "bot_name": "Vexa"},
+         "bot_name": "Notetaker"},
         {"id": "personal", "name": "Personal", "uid": "uid-1", "auto_join": True,
-         "bot_name": "Vexa"},
+         "bot_name": "Notetaker"},
     ]
     assert all(source["event"] == parsed["events"][0]["metadata"] for source in sources)
     assert row["data"]["auto_join"] is True
@@ -352,7 +352,7 @@ async def test_disconnecting_one_calendar_preserves_other_source_and_recomputes_
     (source,) = row["data"]["calendar_sources"]
     assert {key: source[key] for key in ("id", "name", "uid", "auto_join", "bot_name")} == {
         "id": "personal", "name": "Personal", "uid": "uid-1", "auto_join": False,
-        "bot_name": "Vexa",
+        "bot_name": "Notetaker",
     }
     assert row["data"]["calendar_name"] == "Personal"
     assert row["data"]["auto_join"] is False
@@ -693,7 +693,7 @@ async def test_paused_calendar_disarms_the_rows_it_manages():
 
     stamp = await run_user_sync(store, {
         "user_id": USER, "calendar_id": "work", "calendar_name": "Work",
-        "bot_name": "Vexa", "deleted": False, "paused": True,
+        "bot_name": "Notetaker", "deleted": False, "paused": True,
     })
 
     assert stamp["last_error"] is None

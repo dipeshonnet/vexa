@@ -71,6 +71,28 @@ async function run() {
     check('json-only response remains a valid transcription result', first.text === 'voxtral ok', `text=${JSON.stringify(first.text)}`);
   }
 
+  // Strict multipart providers require array brackets and reject the scalar field.
+  {
+    const fields: string[] = [];
+    (globalThis as any).fetch = async (_url: unknown, init: { body: Buffer }) => {
+      const body = Buffer.from(init.body).toString('latin1');
+      const arrayField = body.includes('name="timestamp_granularities[]"');
+      fields.push(arrayField ? 'array' : 'scalar');
+      if (arrayField) check('array requests both word and segment timing',
+        body.includes('name="timestamp_granularities[]"\r\n\r\nword\r\n') &&
+        body.includes('name="timestamp_granularities[]"\r\n\r\nsegment\r\n'));
+      if (!arrayField) {
+        return new Response(JSON.stringify({ error: { message: 'unknown param `timestamp_granularities`' } }), { status: 400 });
+      }
+      return new Response(JSON.stringify({ text: 'array timestamps accepted' }), { status: 200 });
+    };
+    const client = new TranscriptionClient({ serviceUrl: 'http://stt.test', maxRetries: 0 });
+    const result = await client.transcribe(pcm, 'en');
+    await client.transcribe(pcm, 'en');
+    check('strict multipart timestamps negotiate once, then cache array encoding',
+      JSON.stringify(fields) === JSON.stringify(['scalar', 'array', 'array']), JSON.stringify(fields));
+    check('timestamp negotiation returns the backend transcription', result.text === 'array timestamps accepted');
+  }
   (globalThis as any).fetch = realFetch;
   if (failed) { console.error(`\n❌ stt model: ${failed} check(s) FAILED.`); process.exit(1); }
   console.log('\n✅ stt model (P5, #522): configured model ids reach the wire; json-only OpenAI-compatible backends negotiate once.');

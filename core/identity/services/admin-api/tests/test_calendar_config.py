@@ -96,7 +96,7 @@ def test_calendar_bot_name_is_user_visible_and_reaches_auto_join_context(client)
     uid, tok = _user_token(client, email="cal-name@vexa.ai")
     h = {"X-API-Key": tok}
 
-    assert client.get("/user/calendar", headers=h).json()["bot_name"] == "Vexa"
+    assert client.get("/user/calendar", headers=h).json()["bot_name"] == "Notetaker"
     updated = client.put("/user/calendar", headers=h, json={"bot_name": "  Note Taker  "})
     assert updated.status_code == 200, updated.text
     assert updated.json()["bot_name"] == "Note Taker"
@@ -137,7 +137,7 @@ def test_plural_calendars_are_independent_and_never_echo_secret_urls(client):
     assert personal.status_code == 201, personal.text
     assert work.json()["id"] != personal.json()["id"]
     assert work.json()["bot_name"] == "Work Notes"
-    assert personal.json()["bot_name"] == "Vexa"
+    assert personal.json()["bot_name"] == "Notetaker"
 
     listed = client.get("/user/calendars", headers=h).json()["calendars"]
     assert [item["name"] for item in listed] == ["Work", "Personal"]
