@@ -1,2 +1,3 @@
 - Recognize Node built-in imports, including `node:` prefixes and subpaths, in the meeting join isolation checker while retaining undeclared dependency checks.
 - Keep sealed schemas, generated architecture views, and shell scripts in LF form on Windows checkouts.
+- Ignore generated cache and build directories during architecture completeness checks, including after Python tests run.
