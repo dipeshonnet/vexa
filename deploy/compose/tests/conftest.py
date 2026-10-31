@@ -56,6 +56,7 @@ RUNTIME_HOST_PORT = _host_port("RUNTIME_API_PORT", "18090")
 AGENT_API_HOST_PORT = _host_port("AGENT_API_PORT", "18100")
 TERMINAL_HOST_PORT = _host_port("TERMINAL_PORT", "13000")
 MCP_HOST_PORT = _host_port("MCP_HOST_PORT", "18010")
+FLOWS_API_HOST_PORT = _host_port("FLOWS_API_HOST_PORT", "18200")
 POSTGRES_HOST_PORT = _host_port("POSTGRES_HOST_PORT", "5458")
 STORAGE_HOST_PORT = _host_port("STORAGE_HOST_PORT", "18900")
 GATEWAY_URL = f"http://127.0.0.1:{GATEWAY_PORT}"
@@ -142,6 +143,7 @@ def _stack_env() -> dict:
         # every published host port must be pinned here — a var left out falls through to
         # deploy/compose/.env (a developer's live stack) and collides with its running ports
         "MCP_HOST_PORT": MCP_HOST_PORT,
+        "FLOWS_API_HOST_PORT": FLOWS_API_HOST_PORT,
         "POSTGRES_HOST_PORT": POSTGRES_HOST_PORT,
         "STORAGE_HOST_PORT": STORAGE_HOST_PORT,
         # Docker-Desktop / Linux root socket → group 0 is fine for the mounted socket.
