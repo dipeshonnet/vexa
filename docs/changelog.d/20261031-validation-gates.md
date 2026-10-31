@@ -4,3 +4,4 @@
 - Drive Teams name-recovery fixture heartbeats explicitly so scheduler delays cannot change its event counts.
 - Anchor transcript-writer test clocks after ingestion and freeze lifecycle boundary-test time, preserving the mutable-tail and 300-second grace checks under load.
 - Report pnpm license-inventory failures explicitly and reject malformed inventories instead of crashing or reporting an empty green result.
+- Wait for the final Postgres TCP listener during Compose startup and allow first-boot initialization before counting readiness failures.
