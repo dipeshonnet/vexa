@@ -43,3 +43,7 @@ core/meetings/services/bot/entrypoint.sh text eol=lf
 docs/views/* text eol=lf
 # Shell scripts are executed by Linux validation and deployment runtimes.
 *.sh text eol=lf
+
+# Release packets are byte-pinned; workflows embed executable shell snippets.
+releases/**/*.json text eol=lf
+.github/workflows/*.yml text eol=lf

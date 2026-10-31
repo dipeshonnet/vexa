@@ -98,6 +98,23 @@ globalObject.document = {
     selector === '[data-tid*="participant"]' ? [tile, silentTile] : [],
 };
 
+// Heartbeats are explicit events; debounce timers still run through the event loop.
+let fixtureNow = Date.now();
+const intervals = new Map<number, { callback: () => void; delay: number }>();
+let nextIntervalId = 0;
+globalObject.setInterval = ((callback: () => void, delay: number) => {
+  const id = ++nextIntervalId;
+  intervals.set(id, { callback, delay });
+  return id;
+}) as unknown as typeof setInterval;
+globalObject.clearInterval = ((id: number) => { intervals.delete(id); }) as unknown as typeof clearInterval;
+function pulseHeartbeat(): void {
+  fixtureNow += 520;
+  for (const interval of intervals.values()) {
+    if (interval.delay === 500) interval.callback();
+  }
+}
+
 const hints: Array<{ name: string; id: string; isEnd: boolean }> = [];
 const observations: TeamsNameUnresolvedObservation[] = [];
 const logs: string[] = [];
@@ -105,6 +122,7 @@ const logs: string[] = [];
 const options: TeamsSpeakersOptions & {
   onNameUnresolved: (observation: TeamsNameUnresolvedObservation) => void;
 } = {
+  now: () => fixtureNow,
   debounceMs: 0,
   heartbeatMs: 500,
   log: (message) => logs.push(message),
@@ -155,7 +173,7 @@ if (
 // manufacture repeated observations. A name that paints immediately before
 // SILENT has not emitted a named START, so the episode still closes with a
 // typed unresolved END rather than an orphan named END.
-await new Promise((resolve) => setTimeout(resolve, 520));
+pulseHeartbeat();
 tile.setNameSurface(new FakeElement('SPAN', { title: 'Alpha Example' }, null, 'Alpha Example'));
 voice.setClass('');
 const pendingRaf = rafCallbacks.splice(0);
@@ -174,7 +192,7 @@ if (observations.length !== 2 || observations[1]?.edge !== 'end') {
 
 // A later-rendered name is recovered by the real Teams heartbeat and becomes a
 // normal named start. That actual named START permits the matching named END.
-await new Promise((resolve) => setTimeout(resolve, 220));
+fixtureNow += 220;
 tile.setNameSurface(null);
 voice.setClass('vdi-frame-occlusion');
 const nextRaf = rafCallbacks.splice(0);
@@ -186,7 +204,7 @@ if (observations.length !== 3 || observations[2]?.edge !== 'start') {
   );
 }
 tile.setNameSurface(new FakeElement('SPAN', { title: 'Alpha Example' }, null, 'Alpha Example'));
-await new Promise((resolve) => setTimeout(resolve, 520));
+pulseHeartbeat();
 if (
   hints.length !== 1
   || hints[0]?.name !== 'Alpha Example'
