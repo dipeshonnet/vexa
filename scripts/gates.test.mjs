@@ -14,7 +14,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { writeFileSync, readFileSync, rmSync, mkdirSync, existsSync, mkdtempSync, copyFileSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -152,8 +152,8 @@ test("a test-only create_async_engine does not invent a service in the budget", 
 // is green (a red there would invalidate the fixture below it).
 // ════════════════════════════════════════════════════════════════════════════════════════════════
 
-function runGate(name) {
-  try { return { green: true, out: execFileSync("node", ["scripts/gates.mjs", name], { cwd: tree(), env: GIT_ENV, encoding: "utf8" }) }; }
+function runGate(name, extraEnv = {}) {
+  try { return { green: true, out: execFileSync("node", ["scripts/gates.mjs", name], { cwd: tree(), env: { ...GIT_ENV, ...extraEnv }, encoding: "utf8" }) }; }
   catch (e) { return { green: false, out: `${e.stdout || ""}${e.stderr || ""}` }; }
 }
 // Temporarily replace `find`→`repl` in a tracked file of the copy, run fn, always restore the exact original bytes.
@@ -347,4 +347,50 @@ test("a fixture is visible to the gate it runs, and never to the checkout other 
   const planted = withPlanted(PROD_FILE, POOL_LITERALS, () => ({ checkout: existsSync(join(ROOT, PROD_FILE)), gate: runDbBudget() }));
   assert.equal(planted.checkout, false, "a planted file stays out of the checkout");
   assert.equal(planted.gate.green, false, "and the gate still reads it");
+});
+
+
+// The real gate reads a controlled pnpm response through its command boundary.
+function licenseCommand(stdout, exitCode = 0, stderr = "") {
+  // Executable fixtures need a filesystem that permits execution, unlike some OS temp mounts.
+  const cache = join(ROOT, ".local");
+  mkdirSync(cache, { recursive: true });
+  const bin = mkdtempSync(join(cache, "vexa-license-command-"));
+  try {
+    writeFileSync(join(bin, "pnpm"), "#!/usr/bin/env node\n"
+      + `process.stdout.write(${JSON.stringify(stdout)});\n`
+      + `process.stderr.write(${JSON.stringify(stderr)});\nprocess.exit(${exitCode});\n`, { mode: 0o755 });
+    writeFileSync(join(bin, "pnpm.cmd"), '@node "%~dp0pnpm" %*\r\n');
+    return runGate("licenses", { PATH: `${bin}${delimiter}${process.env.PATH || ""}` });
+  } finally { rmSync(bin, { recursive: true, force: true }); }
+}
+test("licenses: permissive dependency inventory passes", () => {
+  const result = licenseCommand(JSON.stringify({ MIT: [{ name: "safe-package" }] }));
+  assert.equal(result.green, true, result.out);
+});
+for (const status of [0, 1]) {
+  test(`licenses: pnpm error JSON fails clearly with exit ${status}`, () => {
+    const result = licenseCommand(JSON.stringify({ error: {
+      code: "ERR_PNPM_MISSING_PACKAGE_INDEX_FILE", message: "package index missing",
+    } }), status);
+    assert.equal(result.green, false, result.out);
+    assert.match(result.out, /ERR_PNPM_MISSING_PACKAGE_INDEX_FILE/);
+    assert.doesNotMatch(result.out, /TypeError/);
+  });
+}
+test("licenses: command failure without stdout cannot report green-on-empty", () => {
+  const result = licenseCommand("", 1, "package inventory unavailable");
+  assert.equal(result.green, false, result.out);
+  assert.match(result.out, /package inventory unavailable/);
+});
+test("licenses: malformed successful inventory fails without crashing", () => {
+  const result = licenseCommand(JSON.stringify({ MIT: { name: "not-a-package-array" } }));
+  assert.equal(result.green, false, result.out);
+  assert.match(result.out, /invalid license inventory/);
+  assert.doesNotMatch(result.out, /TypeError/);
+});
+test("licenses: a forbidden dependency still fails the policy", () => {
+  const result = licenseCommand(JSON.stringify({ "AGPL-3.0": [{ name: "forbidden-package" }] }));
+  assert.equal(result.green, false, result.out);
+  assert.match(result.out, /FORBIDDEN/);
 });

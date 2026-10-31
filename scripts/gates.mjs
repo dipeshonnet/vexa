@@ -425,10 +425,15 @@ function classifyLicense(lic) {
 
 function gateLicenses() {
   let raw;
-  try { raw = execSync("pnpm licenses list --json", { cwd: ROOT, stdio: ["ignore", "pipe", "ignore"] }).toString(); }
-  catch (e) { raw = (e.stdout || "").toString(); }
+  try { raw = execSync("pnpm licenses list --json", { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"] }).toString(); }
+  catch (e) { return fail([`pnpm license inventory failed — run \`pnpm install\` to restore the package index:\n${errText(e).slice(-1200)}`]); }
   if (!raw.trim()) { console.log("  ✓ gate:licenses — no resolved deps yet (green-on-empty)"); return true; }
   let data; try { data = JSON.parse(raw); } catch { return fail(["`pnpm licenses list --json` returned non-JSON — run `pnpm install` first"]); }
+  if (data?.error) return fail([`pnpm license inventory failed — run \`pnpm install\` to restore the package index: ${JSON.stringify(data.error)}`]);
+  if (!data || typeof data !== "object" || Array.isArray(data) ||
+      Object.values(data).some((packages) => !Array.isArray(packages) ||
+        packages.some((pkg) => !pkg || typeof pkg.name !== "string")))
+    return fail(["invalid license inventory — expected license names mapped to package arrays"]);
   const exFile = join(ROOT, "license-exceptions.json");
   const exceptions = existsSync(exFile) ? (JSON.parse(readFileSync(exFile, "utf8")).categoryB || []) : [];
   const excepted = (name) => exceptions.some((e) => name === e.package || name.startsWith(e.package));
