@@ -37,3 +37,9 @@ docs/changelog.d/*.md merge=union
 
 # The Linux bot executes this script directly from Windows build contexts.
 core/meetings/services/bot/entrypoint.sh text eol=lf
+
+# Byte-sealed contracts and generated views require deterministic checkout bytes.
+*.schema.json text eol=lf
+docs/views/* text eol=lf
+# Shell scripts are executed by Linux validation and deployment runtimes.
+*.sh text eol=lf

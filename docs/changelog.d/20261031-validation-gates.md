@@ -1,0 +1,2 @@
+- Recognize Node built-in imports, including `node:` prefixes and subpaths, in the meeting join isolation checker while retaining undeclared dependency checks.
+- Keep sealed schemas, generated architecture views, and shell scripts in LF form on Windows checkouts.
